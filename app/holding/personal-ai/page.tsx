@@ -353,12 +353,6 @@ export default function PersonalAI() {
     [activeSession?.id]
   );
 
-  const sessionButtonClass =
-    'w-full text-left rounded-xl p-3 ' +
-    (activeSession
-      ? 'bg-white/10'
-      : 'bg-white/5');
-
   return (
     <AppShell
       username={a?.username || 'Administrator'}
@@ -604,4 +598,3 @@ export default function PersonalAI() {
     </AppShell>
   );
 }
-```
