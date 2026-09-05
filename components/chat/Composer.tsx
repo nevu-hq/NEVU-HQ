@@ -67,11 +67,6 @@ storage_path?: string;
 const uid = await getUserId();
 
 ```
-/*
- * HQ ROOM
- *
- * HQ messages remain in their own table.
- */
 if (hqSessionId) {
   const result = await sb
     .from('nevu_hq_messages')
@@ -91,21 +86,12 @@ if (hqSessionId) {
   return;
 }
 
-/*
- * HOLDING ROOM
- *
- * Every message MUST carry holding_id.
- *
- * session_id is optional metadata only.
- *
- * The holding is the visibility scope.
- */
-if (holdingId) {
+if (holdingId && sessionId) {
   const result = await sb
     .from('nevu_messages')
     .insert({
       holding_id: holdingId,
-      session_id: sessionId || null,
+      session_id: sessionId,
       sender_type: 'administrator',
       sender_user_id: uid,
       ...payload,
@@ -119,17 +105,12 @@ if (holdingId) {
   return;
 }
 
-/*
- * PRIVATE / OTHER CHAT
- *
- * chatId remains separate from the holding-wide room.
- */
 if (chatId) {
   const result = await sb
     .from('nevu_holding_chat_messages')
     .insert({
       chat_id: chatId,
-      sender_holding_id: holdingId || null,
+      sender_holding_id: holdingId,
       sender_user_id: uid,
       ...payload,
     });
@@ -142,9 +123,7 @@ if (chatId) {
   return;
 }
 
-throw new Error(
-  'No active chat or holding was supplied.'
-);
+throw new Error('No active chat or session was supplied.');
 ```
 
 }
@@ -194,13 +173,14 @@ setBusy(true);
 setError('');
 
 try {
+  const safeName = selectedFile.name.replace(
+    /[^a-zA-Z0-9._-]/g,
+    '_'
+  );
+
   const path =
     `${holdingId}/files/` +
-    `${crypto.randomUUID()}-` +
-    selectedFile.name.replace(
-      /[^a-zA-Z0-9._-]/g,
-      '_'
-    );
+    `${crypto.randomUUID()}-${safeName}`;
 
   const uploadResult = await sb.storage
     .from('nevu-files')
@@ -300,9 +280,7 @@ try {
 
     try {
       const blob = new Blob(chunks.current, {
-        type:
-          recorder.mimeType ||
-          'audio/webm',
+        type: recorder.mimeType || 'audio/webm',
       });
 
       const path =
@@ -313,8 +291,7 @@ try {
         .from('nevu-files')
         .upload(path, blob, {
           contentType:
-            recorder.mimeType ||
-            'audio/webm',
+            recorder.mimeType || 'audio/webm',
           upsert: false,
         });
 
@@ -398,9 +375,7 @@ try {
       .single();
 
     if (pollResult.error) {
-      throw new Error(
-        pollResult.error.message
-      );
+      throw new Error(pollResult.error.message);
     }
 
     const optionsResult = await sb
@@ -414,16 +389,14 @@ try {
       );
 
     if (optionsResult.error) {
-      throw new Error(
-        optionsResult.error.message
-      );
+      throw new Error(optionsResult.error.message);
     }
-  } else if (holdingId) {
+  } else if (holdingId && sessionId) {
     const pollResult = await sb
       .from('nevu_polls')
       .insert({
         holding_id: holdingId,
-        session_id: sessionId || null,
+        session_id: sessionId,
         question,
         multiple_choice: false,
         created_by: uid,
@@ -432,9 +405,7 @@ try {
       .single();
 
     if (pollResult.error) {
-      throw new Error(
-        pollResult.error.message
-      );
+      throw new Error(pollResult.error.message);
     }
 
     const optionsResult = await sb
@@ -448,13 +419,11 @@ try {
       );
 
     if (optionsResult.error) {
-      throw new Error(
-        optionsResult.error.message
-      );
+      throw new Error(optionsResult.error.message);
     }
   } else {
     throw new Error(
-      'No active holding or session is available for this poll.'
+      'No active session is available for this poll.'
     );
   }
 
@@ -503,9 +472,7 @@ return ( <div className="relative"> <input
         className="input mt-3 w-full"
         placeholder="Question"
         value={pollQ}
-        onChange={(e) =>
-          setPollQ(e.target.value)
-        }
+        onChange={(e) => setPollQ(e.target.value)}
       />
 
       {pollOpts.map((option, index) => (
@@ -544,14 +511,10 @@ return ( <div className="relative"> <input
         <button
           type="button"
           className="btn primary"
-          onClick={() => {
-            void createPoll();
-          }}
+          onClick={() => void createPoll()}
           disabled={busy}
         >
-          {busy
-            ? 'Publishing…'
-            : 'Publish poll'}
+          {busy ? 'Publishing…' : 'Publish poll'}
         </button>
       </div>
     </div>
@@ -591,9 +554,7 @@ return ( <div className="relative"> <input
       placeholder="Write a message…"
       value={text}
       disabled={busy}
-      onChange={(e) =>
-        setText(e.target.value)
-      }
+      onChange={(e) => setText(e.target.value)}
       onKeyDown={(e) => {
         if (
           e.key === 'Enter' &&
@@ -610,9 +571,7 @@ return ( <div className="relative"> <input
       className={`btn p-2 ${
         recording ? 'danger' : ''
       }`}
-      onClick={() => {
-        void voice();
-      }}
+      onClick={() => void voice()}
       disabled={busy && !recording}
       title={
         recording
@@ -626,9 +585,7 @@ return ( <div className="relative"> <input
     <button
       type="button"
       className="btn primary p-2"
-      onClick={() => {
-        void send();
-      }}
+      onClick={() => void send()}
       disabled={busy || !text.trim()}
       title="Send"
     >
