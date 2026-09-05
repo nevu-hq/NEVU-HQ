@@ -1,4 +1,3 @@
-```tsx
 'use client';
 
 import {
@@ -55,6 +54,26 @@ export default function ChatPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
+  const loadMessages = useCallback(
+    async (sessionId: string) => {
+      const result = await sb
+        .from('nevu_messages')
+        .select('*')
+        .eq('session_id', sessionId)
+        .order('created_at', {
+          ascending: true,
+        });
+
+      if (result.error) {
+        setError(result.error.message);
+        return;
+      }
+
+      setMessages((result.data || []) as Message[]);
+    },
+    [sb]
+  );
+
   const load = useCallback(
     async (preferredSessionId?: string) => {
       setError('');
@@ -75,17 +94,19 @@ export default function ChatPage() {
         return;
       }
 
-      const adminRes = await sb
-        .from('nevu_administrators')
-        .select('*')
-        .eq('id', user.id)
-        .maybeSingle();
+      const [adminRes, holdingRes] = await Promise.all([
+        sb
+          .from('nevu_administrators')
+          .select('*')
+          .eq('id', user.id)
+          .maybeSingle(),
 
-      const holdingRes = await sb
-        .from('holdings')
-        .select('*')
-        .eq('administrator_id', user.id)
-        .maybeSingle();
+        sb
+          .from('holdings')
+          .select('*')
+          .eq('administrator_id', user.id)
+          .maybeSingle(),
+      ]);
 
       if (adminRes.error) {
         setError(adminRes.error.message);
@@ -110,7 +131,9 @@ export default function ChatPage() {
         .from('nevu_sessions')
         .select('*')
         .eq('holding_id', holdingRes.data.id)
-        .order('started_at', { ascending: false });
+        .order('started_at', {
+          ascending: false,
+        });
 
       if (sessionRes.error) {
         setError(sessionRes.error.message);
@@ -135,27 +158,14 @@ export default function ChatPage() {
       setSession(selected);
 
       if (selected) {
-        const messageRes = await sb
-          .from('nevu_messages')
-          .select('*')
-          .eq('session_id', selected.id)
-          .order('created_at', { ascending: true });
-
-        if (messageRes.error) {
-          setError(messageRes.error.message);
-          setMessages([]);
-        } else {
-          setMessages(
-            (messageRes.data || []) as Message[]
-          );
-        }
+        await loadMessages(selected.id);
       } else {
         setMessages([]);
       }
 
       setLoading(false);
     },
-    [sb]
+    [sb, loadMessages]
   );
 
   useEffect(() => {
@@ -181,15 +191,16 @@ export default function ChatPage() {
           const incoming = payload.new as Message;
 
           setMessages((current) => {
-            const alreadyExists = current.some(
-              (message) => message.id === incoming.id
-            );
-
-            if (alreadyExists) {
+            if (
+              current.some(
+                (message) =>
+                  message.id === incoming.id
+              )
+            ) {
               return current;
             }
 
-            return current.concat(incoming);
+            return [...current, incoming];
           });
         }
       )
@@ -239,20 +250,7 @@ export default function ChatPage() {
   async function selectSession(next: Session) {
     setError('');
     setSession(next);
-
-    const result = await sb
-      .from('nevu_messages')
-      .select('*')
-      .eq('session_id', next.id)
-      .order('created_at', { ascending: true });
-
-    if (result.error) {
-      setError(result.error.message);
-      setMessages([]);
-      return;
-    }
-
-    setMessages((result.data || []) as Message[]);
+    await loadMessages(next.id);
   }
 
   async function refresh() {
@@ -264,15 +262,19 @@ export default function ChatPage() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center muted">
-        Opening NEVU Chat...
+        Opening NEVU Chat…
       </div>
     );
   }
 
   return (
     <AppShell
-      username={admin?.username || 'Administrator'}
-      holdingName={holding?.holding_name || 'Your Holding'}
+      username={
+        admin?.username || 'Administrator'
+      }
+      holdingName={
+        holding?.holding_name || 'Your Holding'
+      }
     >
       <div className="space-y-5">
         <div className="flex items-end justify-between gap-4">
@@ -286,8 +288,8 @@ export default function ChatPage() {
             </h1>
 
             <p className="muted text-sm mt-1">
-              Server-saved conversations with persistent
-              NEVU sessions.
+              Server-saved conversations with
+              persistent NEVU sessions.
             </p>
           </div>
 
@@ -308,12 +310,13 @@ export default function ChatPage() {
                   : 'inline mr-1'
               }
             />
+
             Refresh
           </button>
         </div>
 
         {error && (
-          <div className="card p-3 text-sm text-red-300">
+          <div className="card p-3 text-sm red">
             {error}
           </div>
         )}
@@ -329,8 +332,8 @@ export default function ChatPage() {
             </div>
 
             <p className="muted text-sm mt-2">
-              Every message will be stored on the NEVU
-              server through Supabase.
+              Every message will be stored on
+              the NEVU server through Supabase.
             </p>
 
             <div className="grid md:grid-cols-2 gap-3 mt-5">
@@ -367,7 +370,9 @@ export default function ChatPage() {
                 className="inline mr-1"
               />
 
-              {creating ? 'Creating...' : 'Create Session'}
+              {creating
+                ? 'Creating…'
+                : 'Create Session'}
             </button>
           </div>
         ) : (
@@ -380,12 +385,14 @@ export default function ChatPage() {
                   </div>
 
                   <div className="text-xs muted">
-                    Session ID: {session.id.slice(0, 8)}...
+                    Session ID:{' '}
+                    {session.id.slice(0, 8)}
+                    …
                   </div>
                 </div>
 
                 <span className="badge green">
-                  {session.status || 'active'}
+                  ● {session.status || 'active'}
                 </span>
               </div>
 
@@ -400,45 +407,6 @@ export default function ChatPage() {
                     (item) =>
                       item.key === message.agent_key
                   );
-
-                  let content;
-
-                  if (message.deleted_at) {
-                    content = (
-                      <div className="text-sm opacity-60">
-                        Message deleted
-                      </div>
-                    );
-                  } else if (
-                    message.message_type === 'voice' &&
-                    message.storage_path
-                  ) {
-                    content = (
-                      <VoiceMessage
-                        path={message.storage_path}
-                      />
-                    );
-                  } else if (message.storage_path) {
-                    content = (
-                      <AttachmentPreview
-                        path={message.storage_path}
-                        name={
-                          message.message ||
-                          'Attachment'
-                        }
-                        image={
-                          message.message_type ===
-                          'image'
-                        }
-                      />
-                    );
-                  } else {
-                    content = (
-                      <div className="text-sm whitespace-pre-wrap">
-                        {message.message || ''}
-                      </div>
-                    );
-                  }
 
                   return (
                     <div
@@ -463,7 +431,37 @@ export default function ChatPage() {
                               message.sender_type}
                         </div>
 
-                        {content}
+                        {message.deleted_at ? (
+                          <div className="text-sm opacity-60">
+                            Message deleted
+                          </div>
+                        ) : message.message_type ===
+                            'voice' &&
+                          message.storage_path ? (
+                          <VoiceMessage
+                            path={
+                              message.storage_path
+                            }
+                          />
+                        ) : message.storage_path ? (
+                          <AttachmentPreview
+                            path={
+                              message.storage_path
+                            }
+                            name={
+                              message.message ||
+                              'Attachment'
+                            }
+                            image={
+                              message.message_type ===
+                              'image'
+                            }
+                          />
+                        ) : (
+                          <div className="text-sm whitespace-pre-wrap">
+                            {message.message || ''}
+                          </div>
+                        )}
 
                         <div className="text-[9px] opacity-50 mt-2">
                           {new Date(
@@ -483,7 +481,8 @@ export default function ChatPage() {
                       <p>Session opened.</p>
 
                       <p className="text-xs mt-1">
-                        Send the first message below.
+                        Send the first message
+                        below.
                       </p>
                     </div>
                   </div>
@@ -513,35 +512,30 @@ export default function ChatPage() {
                 </div>
 
                 <div className="mt-3 space-y-2">
-                  {sessions.map((item) => {
-                    const selected =
-                      item.id === session.id;
+                  {sessions.map((item) => (
+                    <button
+                      type="button"
+                      key={item.id}
+                      className={
+                        item.id === session.id
+                          ? 'w-full text-left rounded-xl border p-3 border-white/30 bg-white/5'
+                          : 'w-full text-left rounded-xl border p-3 border-white/10 hover:bg-white/5'
+                      }
+                      onClick={() => {
+                        void selectSession(item);
+                      }}
+                    >
+                      <div className="text-sm">
+                        {item.title}
+                      </div>
 
-                    return (
-                      <button
-                        type="button"
-                        key={item.id}
-                        className={
-                          selected
-                            ? 'w-full text-left rounded-xl border p-3 border-white/30 bg-white/5'
-                            : 'w-full text-left rounded-xl border p-3 border-white/10 hover:bg-white/5'
-                        }
-                        onClick={() => {
-                          void selectSession(item);
-                        }}
-                      >
-                        <div className="text-sm">
-                          {item.title}
-                        </div>
-
-                        <div className="text-[10px] muted mt-1">
-                          {new Date(
-                            item.started_at
-                          ).toLocaleString()}
-                        </div>
-                      </button>
-                    );
-                  })}
+                      <div className="text-[10px] muted mt-1">
+                        {new Date(
+                          item.started_at
+                        ).toLocaleString()}
+                      </div>
+                    </button>
+                  ))}
                 </div>
               </div>
 
@@ -577,8 +571,9 @@ export default function ChatPage() {
               </div>
 
               <div className="card p-4 text-xs muted">
-                Messages are stored in Supabase and are
-                not dependent on browser local storage.
+                Messages are stored in Supabase
+                and are not dependent on browser
+                local storage.
               </div>
             </aside>
           </div>
@@ -604,7 +599,10 @@ function AttachmentPreview({
     let active = true;
 
     async function loadAttachment() {
-      const result = await createClient()
+      const {
+        data,
+        error: signedUrlError,
+      } = await createClient()
         .storage
         .from('nevu-files')
         .createSignedUrl(path, 3600);
@@ -613,19 +611,19 @@ function AttachmentPreview({
         return;
       }
 
-      if (result.error) {
-        setError(result.error.message);
+      if (signedUrlError) {
+        setError(signedUrlError.message);
         return;
       }
 
-      if (!result.data?.signedUrl) {
+      if (!data?.signedUrl) {
         setError(
           'Attachment could not be loaded.'
         );
         return;
       }
 
-      setUrl(result.data.signedUrl);
+      setUrl(data.signedUrl);
     }
 
     void loadAttachment();
@@ -646,7 +644,7 @@ function AttachmentPreview({
   if (!url) {
     return (
       <div className="text-xs muted">
-        Loading attachment...
+        Loading attachment…
       </div>
     );
   }
@@ -678,4 +676,3 @@ function AttachmentPreview({
     </a>
   );
 }
-```
