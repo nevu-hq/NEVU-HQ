@@ -280,8 +280,7 @@ export default function PersonalAI() {
           body: JSON.stringify({
             prompt: text,
             sessionId: session.id,
-            agentKey:
-              'personal_assistant',
+            agentKey: 'personal_assistant',
           }),
         }
       );
@@ -296,8 +295,7 @@ export default function PersonalAI() {
       }
 
       await loadMessages(
-        data.sessionId ||
-          session.id
+        data.sessionId || session.id
       );
 
       setNote('');
@@ -334,7 +332,8 @@ export default function PersonalAI() {
 
     const channel = sb
       .channel(
-        `personal-ai-${activeSession.id}`
+        'personal-ai-' +
+          activeSession.id
       )
       .on(
         'postgres_changes',
@@ -343,7 +342,8 @@ export default function PersonalAI() {
           schema: 'public',
           table: 'nevu_messages',
           filter:
-            `session_id=eq.${activeSession.id}`,
+            'session_id=eq.' +
+            activeSession.id,
         },
         (payload) => {
           const incoming =
