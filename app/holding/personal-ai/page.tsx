@@ -25,20 +25,14 @@ type Message = {
 export default function PersonalAI() {
   const [admin, setAdmin] = useState<any>(null);
   const [holding, setHolding] = useState<any>(null);
-
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeSession, setActiveSession] =
     useState<Session | null>(null);
-
-  const [messages, setMessages] =
-    useState<Message[]>([]);
-
+  const [messages, setMessages] = useState<Message[]>([]);
   const [note, setNote] = useState('');
   const [present, setPresent] = useState(false);
-
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
-
   const [error, setError] = useState('');
 
   async function loadData() {
@@ -77,11 +71,11 @@ export default function PersonalAI() {
       return;
     }
 
-    const currentHolding = holdingResult.data;
+    const holding = holdingResult.data;
 
-    setHolding(currentHolding);
+    setHolding(holding);
 
-    if (!currentHolding) {
+    if (!holding) {
       setError(
         'No NEVU Holding is linked to this Administrator.'
       );
@@ -110,10 +104,7 @@ export default function PersonalAI() {
       .select(
         'id,title,purpose,started_at,status'
       )
-      .eq(
-        'holding_id',
-        currentHolding.id
-      )
+      .eq('holding_id', holding.id)
       .order('started_at', {
         ascending: false,
       })
@@ -147,10 +138,7 @@ export default function PersonalAI() {
       .select(
         'id,session_id,sender_type,agent_key,message,created_at'
       )
-      .eq(
-        'session_id',
-        sessionId
-      )
+      .eq('session_id', sessionId)
       .order('created_at', {
         ascending: true,
       });
@@ -216,6 +204,8 @@ export default function PersonalAI() {
 
   async function toggle() {
     if (!holding) return;
+
+    setError('');
 
     const sb = createClient();
 
@@ -319,7 +309,7 @@ export default function PersonalAI() {
         {
           method: 'POST',
           headers: {
-            'content-type':
+            'Content-Type':
               'application/json',
             'x-holding-id':
               holding.id,
@@ -339,13 +329,13 @@ export default function PersonalAI() {
 
       if (!response.ok) {
         throw new Error(
-          data.error ||
+          data?.error ||
             'Personal AI request failed.'
         );
       }
 
       await loadMessages(
-        data.sessionId ||
+        data?.sessionId ||
           currentSession.id
       );
 
@@ -423,14 +413,16 @@ export default function PersonalAI() {
       .subscribe();
 
     return () => {
-      void sb.removeChannel(channel);
+      void sb.removeChannel(
+        channel
+      );
     };
   }, [activeSession?.id]);
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center muted">
-        Opening Personal AI…
+        Opening Personal AI...
       </div>
     );
   }
@@ -450,7 +442,6 @@ export default function PersonalAI() {
 
         <div>
           <div className="flex justify-between items-start gap-4">
-
             <div>
               <div className="text-xs uppercase tracking-[.25em] muted">
                 Private Advisor
@@ -479,31 +470,26 @@ export default function PersonalAI() {
                 ? '● AI Active'
                 : '○ Activate Personal AI'}
             </button>
-
           </div>
         </div>
 
         <div className="card p-4 flex gap-3 text-sm">
-
           <LockKeyhole size={17} />
 
           <div>
             The Personal AI reviews the
-            Administrator&apos;s conversation
-            and NEVU agent context.
-            Conversations are stored on
-            the NEVU server and remain
-            private to this Holding.
+            Administrator&apos;s
+            conversation and NEVU agent
+            context. Conversations are
+            stored on the NEVU server and
+            remain private to this Holding.
           </div>
-
         </div>
 
         <div className="grid md:grid-cols-[240px_1fr] gap-5">
 
           <aside className="glass rounded-2xl p-4 h-fit">
-
             <div className="flex items-center justify-between mb-4">
-
               <div>
                 <h2 className="font-semibold">
                   Sessions
@@ -524,7 +510,6 @@ export default function PersonalAI() {
               >
                 +
               </button>
-
             </div>
 
             {sessions.length === 0 ? (
@@ -533,54 +518,46 @@ export default function PersonalAI() {
               </div>
             ) : (
               <div className="space-y-2">
+                {sessions.map((item) => {
+                  const selected =
+                    activeSession?.id ===
+                    item.id;
 
-                {sessions.map(
-                  (item) => {
-                    const selected =
-                      activeSession?.id ===
-                      item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => {
+                        setActiveSession(
+                          item
+                        );
+                      }}
+                      className={
+                        selected
+                          ? 'w-full text-left rounded-xl p-3 bg-white/10'
+                          : 'w-full text-left rounded-xl p-3 bg-white/5'
+                      }
+                    >
+                      <div className="text-sm truncate">
+                        {item.title ||
+                          'Personal AI Session'}
+                      </div>
 
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => {
-                          setActiveSession(
-                            item
-                          );
-                        }}
-                        className={
-                          selected
-                            ? 'w-full text-left rounded-xl p-3 bg-white/10'
-                            : 'w-full text-left rounded-xl p-3 bg-white/5'
-                        }
-                      >
-
-                        <div className="text-sm truncate">
-                          {item.title ||
-                            'Personal AI Session'}
-                        </div>
-
-                        <div className="text-xs muted mt-1">
-                          {new Date(
-                            item.started_at
-                          ).toLocaleString()}
-                        </div>
-
-                      </button>
-                    );
-                  }
-                )}
-
+                      <div className="text-xs muted mt-1">
+                        {new Date(
+                          item.started_at
+                        ).toLocaleString()}
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             )}
-
           </aside>
 
           <section className="glass rounded-2xl p-5">
 
             <div className="flex items-center gap-3">
-
               <Sparkles size={20} />
 
               <div>
@@ -589,18 +566,16 @@ export default function PersonalAI() {
                 </h2>
 
                 <p className="text-xs muted">
-                  Conversation memory is stored
-                  on the NEVU server.
+                  Conversation memory is
+                  stored on the NEVU server.
                 </p>
               </div>
-
             </div>
 
             <div className="mt-5 min-h-[300px] max-h-[520px] overflow-y-auto space-y-4">
 
               {!activeSession && (
                 <div className="text-center py-16">
-
                   <p className="muted text-sm">
                     Create a Personal AI
                     session to begin.
@@ -616,71 +591,61 @@ export default function PersonalAI() {
                   >
                     Create Session
                   </button>
-
                 </div>
               )}
 
               {activeSession &&
                 messages.length === 0 && (
                   <div className="text-center py-16">
-
                     <p className="muted text-sm">
                       This Personal AI
                       session is ready.
                     </p>
-
                   </div>
                 )}
 
-              {messages.map(
-                (message) => {
-                  const administrator =
-                    message.sender_type ===
-                      'administrator' ||
-                    message.sender_type ===
-                      'user';
+              {messages.map((message) => {
+                const administrator =
+                  message.sender_type ===
+                    'administrator' ||
+                  message.sender_type ===
+                    'user';
 
-                  return (
+                return (
+                  <div
+                    key={message.id}
+                    className={
+                      administrator
+                        ? 'flex justify-end'
+                        : 'flex justify-start'
+                    }
+                  >
                     <div
-                      key={message.id}
                       className={
                         administrator
-                          ? 'flex justify-end'
-                          : 'flex justify-start'
+                          ? 'max-w-[85%] rounded-2xl px-4 py-3 bg-white text-black'
+                          : 'max-w-[85%] rounded-2xl px-4 py-3 bg-white/10'
                       }
                     >
-
-                      <div
-                        className={
-                          administrator
-                            ? 'max-w-[85%] rounded-2xl px-4 py-3 bg-white text-black'
-                            : 'max-w-[85%] rounded-2xl px-4 py-3 bg-white/10'
-                        }
-                      >
-
-                        <div className="text-[10px] uppercase tracking-wider opacity-50 mb-1">
-                          {administrator
-                            ? 'Administrator'
-                            : 'Personal AI'}
-                        </div>
-
-                        <div className="whitespace-pre-wrap text-sm leading-6">
-                          {message.message}
-                        </div>
-
-                        <div className="text-[10px] opacity-40 mt-2">
-                          {new Date(
-                            message.created_at
-                          ).toLocaleTimeString()}
-                        </div>
-
+                      <div className="text-[10px] uppercase tracking-wider opacity-50 mb-1">
+                        {administrator
+                          ? 'Administrator'
+                          : 'Personal AI'}
                       </div>
 
-                    </div>
-                  );
-                }
-              )}
+                      <div className="whitespace-pre-wrap text-sm leading-6">
+                        {message.message}
+                      </div>
 
+                      <div className="text-[10px] opacity-40 mt-2">
+                        {new Date(
+                          message.created_at
+                        ).toLocaleTimeString()}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
 
             {error && (
@@ -690,7 +655,6 @@ export default function PersonalAI() {
             )}
 
             <div className="mt-5">
-
               <textarea
                 className="input min-h-32 w-full"
                 placeholder="Ask your Personal AI to consider the discussion..."
@@ -722,13 +686,10 @@ export default function PersonalAI() {
                   ? 'Thinking...'
                   : 'Consider this'}
               </button>
-
             </div>
 
           </section>
-
         </div>
-
       </div>
     </AppShell>
   );
