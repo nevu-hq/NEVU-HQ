@@ -1,3 +1,4 @@
+```tsx
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -5,114 +6,597 @@ import { Sparkles, LockKeyhole } from 'lucide-react';
 import { AppShell } from '@/components/layout/AppShell';
 import { createClient } from '@/lib/supabase/client';
 
-export default function PersonalAI() {
-  const [a, setA] = useState<any>();
-  const [h, setH] = useState<any>();
-  const [sessions, setSessions] = useState<any[]>([]);
-  const [note, setNote] = useState('');
-  const [reply, setReply] = useState('');
-  const [present, setPresent] = useState(false);
+type Session = {
+  id: string;
+  title: string | null;
+  purpose: string | null;
+  started_at: string;
+  status: string;
+};
 
-  useEffect(() => {
-    (async () => {
-      const sb = createClient();
-      const u = await sb.auth.getUser();
-      if (!u.data.user) {
-        location.href = '/login';
-        return;
-      }
-      setA((await sb.from('nevu_administrators').select('*').eq('id', u.data.user.id).single()).data);
-      const hh = (await sb.from('holdings').select('*').eq('administrator_id', u.data.user.id).single()).data;
-      setH(hh);
-      if (hh) {
-        const pr = (await sb.from('nevu_presence').select('personal_ai_present').eq('user_id', u.data.user.id).single()).data;
-        setPresent(!!pr?.personal_ai_present);
-        setSessions((await sb.from('nevu_sessions').select('*').eq('holding_id', hh.id).order('started_at', { ascending: false }).limit(8)).data || []);
-      }
-    })();
-  }, []);
+type Message = {
+  id: string;
+  session_id: string;
+  sender_type: string;
+  agent_key: string | null;
+  message: string;
+  created_at: string;
+};
+
+export default function PersonalAI() {
+  const [a, setA] = useState<any>(null);
+  const [h, setH] = useState<any>(null);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [activeSession, setActiveSession] = useState<Session | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [note, setNote] = useState('');
+  const [present, setPresent] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState('');
+
+  async function loadData() {
+    const sb = createClient();
+
+    const {
+      data: { user },
+    } = await sb.auth.getUser();
+
+    if (!user) {
+      window.location.href = '/login';
+      return;
+    }
+
+    const adminResult = await sb
+      .from('nevu_administrators')
+      .select('*')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    setA(adminResult.data);
+
+    const holdingResult = await sb
+      .from('holdings')
+      .select('*')
+      .eq('administrator_id', user.id)
+      .maybeSingle();
+
+    if (holdingResult.error) {
+      setError(holdingResult.error.message);
+      setLoading(false);
+      return;
+    }
+
+    const holding = holdingResult.data;
+
+    setH(holding);
+
+    if (!holding) {
+      setError('No NEVU Holding is linked to this Administrator.');
+      setLoading(false);
+      return;
+    }
+
+    const presenceResult = await sb
+      .from('nevu_presence')
+      .select('personal_ai_present')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    setPresent(!!presenceResult.data?.personal_ai_present);
+
+    const sessionResult = await sb
+      .from('nevu_sessions')
+      .select(
+        'id,title,purpose,started_at,status'
+      )
+      .eq('holding_id', holding.id)
+      .order('started_at', { ascending: false })
+      .limit(20);
+
+    if (sessionResult.error) {
+      setError(sessionResult.error.message);
+      setLoading(false);
+      return;
+    }
+
+    const loadedSessions = (sessionResult.data || []) as Session[];
+
+    setSessions(loadedSessions);
+
+    if (loadedSessions.length > 0) {
+      setActiveSession(loadedSessions[0]);
+    }
+
+    setLoading(false);
+  }
+
+  async function loadMessages(sessionId: string) {
+    const sb = createClient();
+
+    const result = await sb
+      .from('nevu_messages')
+      .select(
+        'id,session_id,sender_type,agent_key,message,created_at'
+      )
+      .eq('session_id', sessionId)
+      .order('created_at', { ascending: true });
+
+    if (result.error) {
+      setError(result.error.message);
+      return;
+    }
+
+    setMessages((result.data || []) as Message[]);
+  }
+
+  async function createSession() {
+    if (!h) return;
+
+    setError('');
+
+    const sb = createClient();
+
+    const {
+      data: { user },
+    } = await sb.auth.getUser();
+
+    if (!user) {
+      window.location.href = '/login';
+      return;
+    }
+
+    const result = await sb
+      .from('nevu_sessions')
+      .insert({
+        holding_id: h.id,
+        title: 'Personal AI Session',
+        purpose: 'Administrator personal AI conversation',
+        current_capital: 0,
+        created_by: user.id,
+        status: 'active',
+      })
+      .select(
+        'id,title,purpose,started_at,status'
+      )
+      .single();
+
+    if (result.error) {
+      setError(result.error.message);
+      return;
+    }
+
+    const session = result.data as Session;
+
+    setSessions((current) => [
+      session,
+      ...current,
+    ]);
+
+    setActiveSession(session);
+    setMessages([]);
+  }
 
   async function toggle() {
     if (!h) return;
+
     const sb = createClient();
-    const uid = (await sb.auth.getUser()).data.user?.id;
-    if (!uid) return;
-    await sb.from('nevu_presence').update({ personal_ai_present: !present }).eq('user_id', uid);
-    setPresent(!present);
+
+    const {
+      data: { user },
+    } = await sb.auth.getUser();
+
+    if (!user) return;
+
+    const next = !present;
+
+    const result = await sb
+      .from('nevu_presence')
+      .update({
+        personal_ai_present: next,
+      })
+      .eq('user_id', user.id);
+
+    if (result.error) {
+      setError(result.error.message);
+      return;
+    }
+
+    setPresent(next);
   }
 
   async function ask() {
-    if (!h || !note) return;
-    const sb = createClient();
-    const s = sessions[0];
-    
-    const mm = s
-      ? (await sb.from('nevu_messages').select('sender_type,agent_key,message,created_at').eq('session_id', s.id).order('created_at', { ascending: false }).limit(30)).data || []
-      : [];
+    const text = note.trim();
 
-    const hs = (await sb.from('nevu_hq_sessions').select('id').eq('status', 'active').order('started_at', { ascending: false }).limit(1)).data?.[0];
-    
-    const hm = hs
-      ? (await sb.from('nevu_hq_messages').select('sender_type,sender_holding_id,agent_key,message,created_at').eq('hq_session_id', hs.id).order('created_at', { ascending: false }).limit(30)).data || []
-      : [];
+    if (!h || !text || sending) return;
 
-    const context = [...mm.reverse(), ...hm.reverse()]
-      .map((m: any) => `${m.sender_type === 'agent' ? m.agent_key : m.sender_type}: ${m.message}`)
-      .join('\n');
+    setSending(true);
+    setError('');
 
-    const res = await fetch('/api/ai/personal', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ question: note, context }),
-    });
-    
-    const data = await res.json();
-    setReply(data.reply || data.error || 'Personal AI unavailable.');
+    try {
+      let session = activeSession;
+
+      /*
+       * If there is no Personal AI session yet, create one.
+       */
+      if (!session) {
+        await createSession();
+
+        const sb = createClient();
+
+        const result = await sb
+          .from('nevu_sessions')
+          .select(
+            'id,title,purpose,started_at,status'
+          )
+          .eq('holding_id', h.id)
+          .order('started_at', {
+            ascending: false,
+          })
+          .limit(1)
+          .single();
+
+        if (result.error) {
+          throw result.error;
+        }
+
+        session = result.data as Session;
+
+        setActiveSession(session);
+      }
+
+      if (!session) {
+        throw new Error(
+          'Unable to create a Personal AI session.'
+        );
+      }
+
+      /*
+       * IMPORTANT:
+       *
+       * The API expects `prompt`, not `question`.
+       * The server itself loads the stored conversation
+       * from nevu_messages, so we do NOT manually send
+       * the conversation context from the browser.
+       */
+      const res = await fetch('/api/ai/personal', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-holding-id': h.id,
+        },
+        body: JSON.stringify({
+          prompt: text,
+          sessionId: session.id,
+          agentKey: 'personal_assistant',
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(
+          data.error || 'Personal AI request failed.'
+        );
+      }
+
+      /*
+       * The API saves both the Administrator message
+       * and the AI response to nevu_messages.
+       *
+       * Reload from the server so the UI represents
+       * actual persisted memory.
+       */
+      await loadMessages(
+        data.sessionId || session.id
+      );
+
+      setNote('');
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Personal AI unavailable.'
+      );
+    } finally {
+      setSending(false);
+    }
   }
 
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  useEffect(() => {
+    if (!activeSession?.id) {
+      setMessages([]);
+      return;
+    }
+
+    loadMessages(activeSession.id);
+  }, [activeSession?.id]);
+
+  useEffect(() => {
+    if (!activeSession?.id) return;
+
+    const sb = createClient();
+
+    const channel = sb
+      .channel(
+        `personal-ai-${activeSession.id}`
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'nevu_messages',
+          filter: `session_id=eq.${activeSession.id}`,
+        },
+        (payload) => {
+          const incoming = payload.new as Message;
+
+          setMessages((current) => {
+            if (
+              current.some(
+                (message) =>
+                  message.id === incoming.id
+              )
+            ) {
+              return current;
+            }
+
+            return [...current, incoming];
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void sb.removeChannel(channel);
+    };
+  }, [activeSession?.id]);
+
   return (
-    <AppShell username={a?.username} holdingName={h?.holding_name}>
-      <div className="max-w-4xl space-y-5">
+    <AppShell
+      username={a?.username || 'Administrator'}
+      holdingName={h?.holding_name || 'Your Holding'}
+    >
+      <div className="max-w-5xl space-y-5">
+
         <div>
-          <div className="flex justify-between items-start">
+          <div className="flex justify-between items-start gap-4">
             <div>
-              <div className="text-xs uppercase tracking-[.25em] muted">Private Advisor</div>
+              <div className="text-xs uppercase tracking-[.25em] muted">
+                Private Advisor
+              </div>
+
+              <h1 className="text-3xl font-semibold mt-2">
+                Personal AI
+              </h1>
+
+              <p className="muted text-sm mt-1">
+                Private to {a?.username || 'the Administrator'}.
+              </p>
             </div>
-            <button className="btn" onClick={toggle}>
-              {present ? '● AI Active' : '○ Activate Personal AI'}
+
+            <button
+              type="button"
+              className="btn"
+              onClick={toggle}
+              disabled={!h}
+            >
+              {present
+                ? '● AI Active'
+                : '○ Activate Personal AI'}
             </button>
-          </div>
-          <h1 className="text-3xl font-semibold">Personal AI</h1>
-          <p className="muted text-sm mt-1">Private to {a?.username || 'the Administrator'}.</p>
-        </div>
-        
-        <div className="card p-4 flex gap-3 text-sm">
-          <LockKeyhole size={17} />
-          <div>
-            The Personal AI reviews what the Administrator and NEVU agents have said in the current Holding context. It does not replace their individual voices; it can point out additional considerations such as “Let's also consider here…”
           </div>
         </div>
 
-        <section className="glass rounded-2xl p-5">
-          <div className="flex items-center gap-3">
-            <Sparkles size={20} />
-            <div>
-              <h2 className="font-semibold">Private second opinion</h2>
-              <p className="text-xs muted">No other Holding can read this conversation.</p>
-            </div>
+        <div className="card p-4 flex gap-3 text-sm">
+          <LockKeyhole size={17} />
+
+          <div>
+            The Personal AI reviews the Administrator's
+            conversation and NEVU agent context. Conversations
+            are stored on the NEVU server and remain private
+            to this Holding.
           </div>
-          <textarea
-            className="input mt-5 min-h-32"
-            placeholder="Ask your Personal AI to consider the discussion…"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-          />
-          <button className="btn primary mt-3" onClick={ask}>
-            Consider this
-          </button>
-          {reply && <div className="card p-4 mt-5 text-sm whitespace-pre-wrap">{reply}</div>}
-        </section>
+        </div>
+
+        <div className="grid md:grid-cols-[240px_1fr] gap-5">
+
+          {/* SESSIONS */}
+
+          <aside className="glass rounded-2xl p-4 h-fit">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="font-semibold">
+                  Sessions
+                </h2>
+
+                <p className="text-xs muted">
+                  Server memory
+                </p>
+              </div>
+
+              <button
+                type="button"
+                className="btn"
+                onClick={createSession}
+                disabled={!h}
+              >
+                +
+              </button>
+            </div>
+
+            {loading ? (
+              <div className="text-sm muted">
+                Loading...
+              </div>
+            ) : sessions.length === 0 ? (
+              <div className="text-sm muted">
+                No Personal AI sessions yet.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {sessions.map((session) => (
+                  <button
+                    key={session.id}
+                    type="button"
+                    onClick={() =>
+                      setActiveSession(session)
+                    }
+                    className={`w-full text-left rounded-xl p-3 ${
+                      activeSession?.id === session.id
+                        ? 'bg-white/10'
+                        : 'bg-white/5'
+                    }`}
+                  >
+                    <div className="text-sm truncate">
+                      {session.title ||
+                        'Personal AI Session'}
+                    </div>
+
+                    <div className="text-xs muted mt-1">
+                      {new Date(
+                        session.started_at
+                      ).toLocaleString()}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </aside>
+
+          {/* PERSONAL AI */}
+
+          <section className="glass rounded-2xl p-5">
+
+            <div className="flex items-center gap-3">
+              <Sparkles size={20} />
+
+              <div>
+                <h2 className="font-semibold">
+                  Private second opinion
+                </h2>
+
+                <p className="text-xs muted">
+                  Conversation memory is stored on the NEVU server.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5 min-h-[300px] max-h-[520px] overflow-y-auto space-y-4">
+
+              {!activeSession && (
+                <div className="text-center py-16">
+                  <p className="muted text-sm">
+                    Create a Personal AI session to begin.
+                  </p>
+
+                  <button
+                    type="button"
+                    className="btn primary mt-4"
+                    onClick={createSession}
+                    disabled={!h}
+                  >
+                    Create Session
+                  </button>
+                </div>
+              )}
+
+              {activeSession &&
+                messages.length === 0 && (
+                  <div className="text-center py-16">
+                    <p className="muted text-sm">
+                      This Personal AI session is ready.
+                    </p>
+                  </div>
+                )}
+
+              {messages.map((message) => {
+                const administrator =
+                  message.sender_type ===
+                    'administrator' ||
+                  message.sender_type === 'user';
+
+                return (
+                  <div
+                    key={message.id}
+                    className={`flex ${
+                      administrator
+                        ? 'justify-end'
+                        : 'justify-start'
+                    }`}
+                  >
+                    <div
+                      className={`max-w-[85%] rounded-2xl px-4 py-3 ${
+                        administrator
+                          ? 'bg-white text-black'
+                          : 'bg-white/10'
+                      }`}
+                    >
+                      <div className="text-[10px] uppercase tracking-wider opacity-50 mb-1">
+                        {administrator
+                          ? 'Administrator'
+                          : 'Personal AI'}
+                      </div>
+
+                      <div className="whitespace-pre-wrap text-sm leading-6">
+                        {message.message}
+                      </div>
+
+                      <div className="text-[10px] opacity-40 mt-2">
+                        {new Date(
+                          message.created_at
+                        ).toLocaleTimeString()}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {error && (
+              <div className="mt-4 rounded-xl bg-red-500/10 border border-red-500/20 p-3 text-sm text-red-300">
+                {error}
+              </div>
+            )}
+
+            <div className="mt-5">
+              <textarea
+                className="input min-h-32 w-full"
+                placeholder="Ask your Personal AI to consider the discussion..."
+                value={note}
+                onChange={(e) =>
+                  setNote(e.target.value)
+                }
+                disabled={
+                  !activeSession || sending
+                }
+              />
+
+              <button
+                type="button"
+                className="btn primary mt-3"
+                onClick={ask}
+                disabled={
+                  !activeSession ||
+                  !note.trim() ||
+                  sending
+                }
+              >
+                {sending
+                  ? 'Thinking...'
+                  : 'Consider this'}
+              </button>
+            </div>
+
+          </section>
+        </div>
       </div>
     </AppShell>
   );
 }
+```
