@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 
 import { AppShell } from '@/components/layout/AppShell';
-import { Composer } from '@/components/chats/composer';
+import { Composer } from '@/components/chat/Composer';
 import { PollList } from '@/components/chat/PollList';
 import { VoiceMessage } from '@/components/chat/VoiceMessage';
 import { createClient } from '@/lib/supabase/client';
@@ -56,7 +56,6 @@ export default function ChatPage() {
 
   const [sessions, setSessions] = useState<Session[]>([]);
   const [session, setSession] = useState<Session | null>(null);
-
   const [messages, setMessages] = useState<Message[]>([]);
 
   const [title, setTitle] = useState('Holding Discussion');
@@ -317,7 +316,6 @@ export default function ChatPage() {
             background: '#171b2c',
           }}
         >
-          {/* SIDEBAR */}
           <aside
             className="w-[340px] flex flex-col border-r"
             style={{
@@ -453,7 +451,6 @@ export default function ChatPage() {
             </div>
           </aside>
 
-          {/* CHAT WINDOW */}
           <main className="flex-1 flex flex-col min-w-0">
             <header
               className="px-6 py-4 flex items-center justify-between border-b"
@@ -516,7 +513,6 @@ export default function ChatPage() {
               </div>
             </header>
 
-            {/* MESSAGE STREAM */}
             <div
               className="flex-1 overflow-y-auto p-6 space-y-4"
               style={{
@@ -626,9 +622,7 @@ export default function ChatPage() {
                       size={30}
                     />
 
-                    <p>
-                      No messages yet.
-                    </p>
+                    <p>No messages yet.</p>
 
                     <p className="text-xs mt-1">
                       Start the holding discussion below.
@@ -638,7 +632,6 @@ export default function ChatPage() {
               )}
             </div>
 
-            {/* COMPOSER */}
             <div
               className="p-4 border-t"
               style={{
