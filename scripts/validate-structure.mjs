@@ -1,0 +1,3 @@
+import fs from 'node:fs';
+const required=['package.json','render.yaml','.env.example','database/001_nevu_hq.sql','app/page.tsx','app/login/page.tsx','app/signup/page.tsx','app/verify/page.tsx','app/holding/page.tsx','app/holding/discussion/page.tsx','app/holding/personal-ai/page.tsx','app/hq/boardroom/page.tsx','app/holding/portfolio/page.tsx','app/holding/archive/page.tsx','app/network/page.tsx','ai-bridge/src/index.ts','public/nevu-hq-logo.jfif'];
+const missing=required.filter(f=>!fs.existsSync(f)); if(missing.length){console.error('Missing:',missing);process.exit(1)} console.log(`NEVU structure OK: ${required.length} required files present.`);

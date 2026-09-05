@@ -1,0 +1,2 @@
+import Image from 'next/image';
+export function Brand({compact=false}:{compact?:boolean}){return <div className="flex items-center gap-3"><Image src="/nevu-hq-logo.png" width={compact?42:54} height={compact?42:54} alt="NEVU HQ" className="rounded-xl object-cover"/><div><div className="font-semibold tracking-[.18em] text-sm">NEVU</div>{!compact&&<div className="text-[10px] tracking-[.3em] muted">HQ</div>}</div></div>}

@@ -1,0 +1,11 @@
+node_modules
+.next
+.env
+.env.local
+.env.production
+ai-bridge/node_modules
+ai-bridge/dist
+ai-bridge/profiles/*/Default/Cookies
+ai-bridge/profiles/*/Default/Local Storage
+*.log
+.DS_Store

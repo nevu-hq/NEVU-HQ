@@ -1,0 +1,9 @@
+{
+  "name":"nevu-hq-ai-bridge",
+  "private":true,
+  "version":"1.0.0",
+  "type":"module",
+  "scripts":{"dev":"tsx src/index.ts","build":"tsc -p tsconfig.json","start":"node dist/index.js"},
+  "dependencies":{"playwright":"1.52.0"},
+  "devDependencies":{"@types/node":"24.0.3","tsx":"4.19.4","typescript":"5.8.3"}
+}
