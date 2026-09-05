@@ -27,8 +27,7 @@ export default function PersonalAI() {
   const [a, setA] = useState<any>(null);
   const [h, setH] = useState<any>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [activeSession, setActiveSession] =
-    useState<Session | null>(null);
+  const [activeSession, setActiveSession] = useState<Session | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [note, setNote] = useState('');
   const [present, setPresent] = useState(false);
@@ -76,9 +75,7 @@ export default function PersonalAI() {
     setH(holding);
 
     if (!holding) {
-      setError(
-        'No NEVU Holding is linked to this Administrator.'
-      );
+      setError('No NEVU Holding is linked to this Administrator.');
       setLoading(false);
       return;
     }
@@ -93,19 +90,13 @@ export default function PersonalAI() {
       setError(presenceResult.error.message);
     }
 
-    setPresent(
-      !!presenceResult.data?.personal_ai_present
-    );
+    setPresent(Boolean(presenceResult.data?.personal_ai_present));
 
     const sessionResult = await sb
       .from('nevu_sessions')
-      .select(
-        'id,title,purpose,started_at,status'
-      )
+      .select('id,title,purpose,started_at,status')
       .eq('holding_id', holding.id)
-      .order('started_at', {
-        ascending: false,
-      })
+      .order('started_at', { ascending: false })
       .limit(20);
 
     if (sessionResult.error) {
@@ -114,8 +105,7 @@ export default function PersonalAI() {
       return;
     }
 
-    const loadedSessions =
-      (sessionResult.data || []) as Session[];
+    const loadedSessions = (sessionResult.data || []) as Session[];
 
     setSessions(loadedSessions);
 
@@ -126,29 +116,21 @@ export default function PersonalAI() {
     setLoading(false);
   }
 
-  async function loadMessages(
-    sessionId: string
-  ) {
+  async function loadMessages(sessionId: string) {
     const sb = createClient();
 
     const result = await sb
       .from('nevu_messages')
-      .select(
-        'id,session_id,sender_type,agent_key,message,created_at'
-      )
+      .select('id,session_id,sender_type,agent_key,message,created_at')
       .eq('session_id', sessionId)
-      .order('created_at', {
-        ascending: true,
-      });
+      .order('created_at', { ascending: true });
 
     if (result.error) {
       setError(result.error.message);
       return;
     }
 
-    setMessages(
-      (result.data || []) as Message[]
-    );
+    setMessages((result.data || []) as Message[]);
   }
 
   async function createSession() {
@@ -172,15 +154,12 @@ export default function PersonalAI() {
       .insert({
         holding_id: h.id,
         title: 'Personal AI Session',
-        purpose:
-          'Administrator personal AI conversation',
+        purpose: 'Administrator personal AI conversation',
         current_capital: 0,
         created_by: user.id,
         status: 'active',
       })
-      .select(
-        'id,title,purpose,started_at,status'
-      )
+      .select('id,title,purpose,started_at,status')
       .single();
 
     if (result.error) {
@@ -190,10 +169,9 @@ export default function PersonalAI() {
 
     const session = result.data as Session;
 
-    setSessions((current) => [
-      session,
-      ...current,
-    ]);
+    setSessions(function (current) {
+      return [session].concat(current);
+    });
 
     setActiveSession(session);
     setMessages([]);
@@ -239,20 +217,28 @@ export default function PersonalAI() {
       let session = activeSession;
 
       if (!session) {
-        await createSession();
-
         const sb = createClient();
+
+        const {
+          data: { user },
+        } = await sb.auth.getUser();
+
+        if (!user) {
+          window.location.href = '/login';
+          return;
+        }
 
         const result = await sb
           .from('nevu_sessions')
-          .select(
-            'id,title,purpose,started_at,status'
-          )
-          .eq('holding_id', h.id)
-          .order('started_at', {
-            ascending: false,
+          .insert({
+            holding_id: h.id,
+            title: 'Personal AI Session',
+            purpose: 'Administrator personal AI conversation',
+            current_capital: 0,
+            created_by: user.id,
+            status: 'active',
           })
-          .limit(1)
+          .select('id,title,purpose,started_at,status')
           .single();
 
         if (result.error) {
@@ -260,44 +246,40 @@ export default function PersonalAI() {
         }
 
         session = result.data as Session;
+
+        setSessions(function (current) {
+          return [session as Session].concat(current);
+        });
+
         setActiveSession(session);
       }
 
       if (!session) {
-        throw new Error(
-          'Unable to create a Personal AI session.'
-        );
+        throw new Error('Unable to create a Personal AI session.');
       }
 
-      const res = await fetch(
-        '/api/ai/personal',
-        {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            'x-holding-id': h.id,
-          },
-          body: JSON.stringify({
-            prompt: text,
-            sessionId: session.id,
-            agentKey: 'personal_assistant',
-          }),
-        }
-      );
+      const res = await fetch('/api/ai/personal', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-holding-id': h.id,
+        },
+        body: JSON.stringify({
+          prompt: text,
+          sessionId: session.id,
+          agentKey: 'personal_assistant',
+        }),
+      });
 
       const data = await res.json();
 
       if (!res.ok) {
         throw new Error(
-          data.error ||
-            'Personal AI request failed.'
+          data.error || 'Personal AI request failed.'
         );
       }
 
-      await loadMessages(
-        data.sessionId || session.id
-      );
-
+      await loadMessages(data.sessionId || session.id);
       setNote('');
     } catch (err) {
       setError(
@@ -310,80 +292,77 @@ export default function PersonalAI() {
     }
   }
 
-  useEffect(() => {
+  useEffect(function () {
     void loadData();
   }, []);
 
-  useEffect(() => {
-    if (!activeSession?.id) {
-      setMessages([]);
-      return;
-    }
+  useEffect(
+    function () {
+      if (!activeSession?.id) {
+        setMessages([]);
+        return;
+      }
 
-    void loadMessages(
-      activeSession.id
-    );
-  }, [activeSession?.id]);
+      void loadMessages(activeSession.id);
+    },
+    [activeSession?.id]
+  );
 
-  useEffect(() => {
-    if (!activeSession?.id) return;
+  useEffect(
+    function () {
+      if (!activeSession?.id) return;
 
-    const sb = createClient();
+      const sb = createClient();
 
-    const channel = sb
-      .channel(
-        'personal-ai-' +
-          activeSession.id
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'nevu_messages',
-          filter:
-            'session_id=eq.' +
-            activeSession.id,
-        },
-        (payload) => {
-          const incoming =
-            payload.new as Message;
+      const channelName =
+        'personal-ai-' + activeSession.id;
 
-          setMessages((current) => {
-            if (
-              current.some(
-                (message) =>
-                  message.id ===
-                  incoming.id
-              )
-            ) {
-              return current;
-            }
+      const channel = sb
+        .channel(channelName)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'nevu_messages',
+            filter:
+              'session_id=eq.' + activeSession.id,
+          },
+          function (payload) {
+            const incoming = payload.new as Message;
 
-            return [
-              ...current,
-              incoming,
-            ];
-          });
-        }
-      )
-      .subscribe();
+            setMessages(function (current) {
+              if (
+                current.some(function (message) {
+                  return message.id === incoming.id;
+                })
+              ) {
+                return current;
+              }
 
-    return () => {
-      void sb.removeChannel(channel);
-    };
-  }, [activeSession?.id]);
+              return current.concat(incoming);
+            });
+          }
+        )
+        .subscribe();
+
+      return function () {
+        void sb.removeChannel(channel);
+      };
+    },
+    [activeSession?.id]
+  );
+
+  const sessionButtonClass =
+    'w-full text-left rounded-xl p-3 ' +
+    (activeSession
+      ? 'bg-white/10'
+      : 'bg-white/5');
 
   return (
     <AppShell
-      username={
-        a?.username ||
-        'Administrator'
-      }
-      holdingName={
-        h?.holding_name ||
-        'Your Holding'
-      }
+      username={a?.username || 'Administrator'}
+      holdingName={h?.holding_name || 'Your Holding'}
     >
       <div className="max-w-5xl space-y-5">
 
@@ -399,18 +378,16 @@ export default function PersonalAI() {
               </h1>
 
               <p className="muted text-sm mt-1">
-                Private to{' '}
-                {a?.username ||
-                  'the Administrator'}.
+                Private to {a?.username || 'the Administrator'}.
               </p>
             </div>
 
             <button
               type="button"
               className="btn"
-              onClick={() =>
-                void toggle()
-              }
+              onClick={function () {
+                void toggle();
+              }}
               disabled={!h}
             >
               {present
@@ -424,12 +401,10 @@ export default function PersonalAI() {
           <LockKeyhole size={17} />
 
           <div>
-            The Personal AI reviews the
-            Administrator's conversation
-            and NEVU agent context.
-            Conversations are stored on
-            the NEVU server and remain
-            private to this Holding.
+            The Personal AI reviews the Administrator&apos;s
+            conversation and NEVU agent context.
+            Conversations are stored on the NEVU server
+            and remain private to this Holding.
           </div>
         </div>
 
@@ -450,9 +425,9 @@ export default function PersonalAI() {
               <button
                 type="button"
                 className="btn"
-                onClick={() =>
-                  void createSession()
-                }
+                onClick={function () {
+                  void createSession();
+                }}
                 disabled={!h}
               >
                 +
@@ -469,26 +444,25 @@ export default function PersonalAI() {
               </div>
             ) : (
               <div className="space-y-2">
-                {sessions.map(
-                  (item) => (
+                {sessions.map(function (item) {
+                  const selected =
+                    activeSession?.id === item.id;
+
+                  return (
                     <button
                       key={item.id}
                       type="button"
-                      onClick={() =>
-                        setActiveSession(
-                          item
-                        )
+                      onClick={function () {
+                        setActiveSession(item);
+                      }}
+                      className={
+                        selected
+                          ? 'w-full text-left rounded-xl p-3 bg-white/10'
+                          : 'w-full text-left rounded-xl p-3 bg-white/5'
                       }
-                      className={`w-full text-left rounded-xl p-3 ${
-                        activeSession?.id ===
-                        item.id
-                          ? 'bg-white/10'
-                          : 'bg-white/5'
-                      }`}
                     >
                       <div className="text-sm truncate">
-                        {item.title ||
-                          'Personal AI Session'}
+                        {item.title || 'Personal AI Session'}
                       </div>
 
                       <div className="text-xs muted mt-1">
@@ -497,8 +471,8 @@ export default function PersonalAI() {
                         ).toLocaleString()}
                       </div>
                     </button>
-                  )
-                )}
+                  );
+                })}
               </div>
             )}
           </aside>
@@ -514,8 +488,7 @@ export default function PersonalAI() {
                 </h2>
 
                 <p className="text-xs muted">
-                  Conversation memory is stored
-                  on the NEVU server.
+                  Conversation memory is stored on the NEVU server.
                 </p>
               </div>
             </div>
@@ -525,16 +498,15 @@ export default function PersonalAI() {
               {!activeSession && (
                 <div className="text-center py-16">
                   <p className="muted text-sm">
-                    Create a Personal AI
-                    session to begin.
+                    Create a Personal AI session to begin.
                   </p>
 
                   <button
                     type="button"
                     className="btn primary mt-4"
-                    onClick={() =>
-                      void createSession()
-                    }
+                    onClick={function () {
+                      void createSession();
+                    }}
                     disabled={!h}
                   >
                     Create Session
@@ -546,56 +518,51 @@ export default function PersonalAI() {
                 messages.length === 0 && (
                   <div className="text-center py-16">
                     <p className="muted text-sm">
-                      This Personal AI
-                      session is ready.
+                      This Personal AI session is ready.
                     </p>
                   </div>
                 )}
 
-              {messages.map(
-                (message) => {
-                  const administrator =
-                    message.sender_type ===
-                      'administrator' ||
-                    message.sender_type ===
-                      'user';
+              {messages.map(function (message) {
+                const administrator =
+                  message.sender_type === 'administrator' ||
+                  message.sender_type === 'user';
 
-                  return (
+                return (
+                  <div
+                    key={message.id}
+                    className={
+                      administrator
+                        ? 'flex justify-end'
+                        : 'flex justify-start'
+                    }
+                  >
                     <div
-                      key={message.id}
-                      className={`flex ${
+                      className={
                         administrator
-                          ? 'justify-end'
-                          : 'justify-start'
-                      }`}
+                          ? 'max-w-[85%] rounded-2xl px-4 py-3 bg-white text-black'
+                          : 'max-w-[85%] rounded-2xl px-4 py-3 bg-white/10'
+                      }
                     >
-                      <div
-                        className={`max-w-[85%] rounded-2xl px-4 py-3 ${
-                          administrator
-                            ? 'bg-white text-black'
-                            : 'bg-white/10'
-                        }`}
-                      >
-                        <div className="text-[10px] uppercase tracking-wider opacity-50 mb-1">
-                          {administrator
-                            ? 'Administrator'
-                            : 'Personal AI'}
-                        </div>
+                      <div className="text-[10px] uppercase tracking-wider opacity-50 mb-1">
+                        {administrator
+                          ? 'Administrator'
+                          : 'Personal AI'}
+                      </div>
 
-                        <div className="whitespace-pre-wrap text-sm leading-6">
-                          {message.message}
-                        </div>
+                      <div className="whitespace-pre-wrap text-sm leading-6">
+                        {message.message}
+                      </div>
 
-                        <div className="text-[10px] opacity-40 mt-2">
-                          {new Date(
-                            message.created_at
-                          ).toLocaleTimeString()}
-                        </div>
+                      <div className="text-[10px] opacity-40 mt-2">
+                        {new Date(
+                          message.created_at
+                        ).toLocaleTimeString()}
                       </div>
                     </div>
-                  );
-                }
-              )}
+                  </div>
+                );
+              })}
             </div>
 
             {error && (
@@ -609,32 +576,25 @@ export default function PersonalAI() {
                 className="input min-h-32 w-full"
                 placeholder="Ask your Personal AI to consider the discussion..."
                 value={note}
-                onChange={(e) =>
-                  setNote(
-                    e.target.value
-                  )
-                }
-                disabled={
-                  !activeSession ||
-                  sending
-                }
+                onChange={function (e) {
+                  setNote(e.target.value);
+                }}
+                disabled={!activeSession || sending}
               />
 
               <button
                 type="button"
                 className="btn primary mt-3"
-                onClick={() =>
-                  void ask()
-                }
+                onClick={function () {
+                  void ask();
+                }}
                 disabled={
                   !activeSession ||
                   !note.trim() ||
                   sending
                 }
               >
-                {sending
-                  ? 'Thinking...'
-                  : 'Consider this'}
+                {sending ? 'Thinking...' : 'Consider this'}
               </button>
             </div>
 
