@@ -376,7 +376,7 @@ export function Composer({
           .from('nevu_polls')
           .insert({
             holding_id: holdingId,
-.session_id: sessionId,
+            session_id: sessionId,
             question,
             multiple_choice: false,
             created_by: uid,
@@ -511,7 +511,7 @@ export function Composer({
           className="btn p-2"
           onClick={() => file.current?.click()}
           disabled={busy}
-          title="Attach file"
+            title="Attach file"
         >
           <Paperclip size={18} />
         </button>
